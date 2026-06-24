@@ -1,0 +1,197 @@
+"""
+generate_dataset.py
+--------------------
+PURPOSE:
+This script generates a realistic, statistically-structured dataset that
+mirrors the schema and behaviour of tweets collected via the scraping
+pipeline in `scrape_twitter.py`.
+
+WHY A GENERATED DATASET IS USED HERE:
+Live scraping of X/Twitter requires either (a) official API credentials
+(Tweepy + Bearer Token) or (b) outbound access to twitter.com / x.com /
+nitter mirrors. The sandboxed analysis environment used to build this
+submission only allows a restricted set of network domains (PyPI, GitHub,
+npm, etc.) and has no social-media API keys configured. To keep the EDA
+and Visualization tasks fully reproducible end-to-end, this script builds
+a synthetic-but-realistic dataset with the SAME columns, distributions,
+and noise characteristics you would expect from a real scrape on the
+topic "Electric Vehicle (EV) Adoption". When you run `scrape_twitter.py`
+with your own API credentials, it writes a CSV with an identical schema,
+so every downstream script (EDA, visualization) works unmodified on real
+data.
+
+Topic chosen: Public conversation around Electric Vehicle (EV) adoption,
+covering India and global markets - a realistic, business-relevant theme
+for sentiment-flavoured social analytics.
+"""
+
+import pandas as pd
+import numpy as np
+import random
+from datetime import datetime, timedelta
+
+random.seed(42)
+np.random.seed(42)
+
+N_TWEETS = 1200
+START_DATE = datetime(2025, 12, 1)
+END_DATE = datetime(2026, 5, 31)
+
+# ---------------------------------------------------------------------
+# 1. Reference vocabularies
+# ---------------------------------------------------------------------
+
+BRANDS = ["Tesla", "Tata Motors", "Ola Electric", "Mahindra", "MG Motor",
+          "Hyundai", "BYD", "Rivian", "Hero Electric", "Kia"]
+
+HASHTAG_POOL = ["#EV", "#ElectricVehicles", "#Tesla", "#TataMotors",
+                "#OlaElectric", "#EVIndia", "#GoGreen", "#FAME2",
+                "#SustainableMobility", "#ElectricCars", "#ClimateAction",
+                "#EVCharging", "#MakeInIndia", "#EVRevolution",
+                "#ZeroEmissions", "#RangeAnxiety", "#BYD", "#Mahindra",
+                "#EVPolicy", "#FutureOfMobility"]
+
+CITIES = ["Bengaluru", "Mumbai", "Delhi", "Pune", "Hyderabad", "Chennai",
+          "Ahmedabad", "Kolkata", "Jaipur", "Surat",
+          "New York", "London", "Berlin", "Shanghai", "Tokyo",
+          "Sydney", "Toronto", "Dubai", "Singapore", "Sao Paulo"]
+
+# Each template is tagged with a base sentiment so engagement & labels
+# correlate sensibly with content (mirrors real-world tweet behaviour).
+POSITIVE_TEMPLATES = [
+    "Just test drove the new {brand} and the acceleration is unreal. EVs are the future!",
+    "Our electricity bill dropped 40% after switching to an {brand} EV. Best decision ever.",
+    "Charging infrastructure in {city} has improved so much this year. Road trip ready!",
+    "{brand} just announced a new battery with 30% more range. Game changer for EV adoption.",
+    "Government subsidy made my {brand} EV purchase so much easier. Thank you FAME2!",
+    "Zero emissions, smooth ride, low maintenance - my {brand} EV checks every box.",
+    "EV sales in {city} crossed a new record this quarter. The shift is real.",
+    "Love how quiet and responsive my {brand} feels compared to my old petrol car.",
+    "{brand}'s new fast charger fills 80% battery in 18 minutes. Insane progress.",
+    "Switching to electric saved me more money in fuel than I expected. Highly recommend.",
+]
+
+NEGATIVE_TEMPLATES = [
+    "Range anxiety is real. My {brand} died 12km from the nearest charger in {city}.",
+    "Battery degradation on my {brand} after 2 years is worse than advertised. Disappointed.",
+    "Waited 45 minutes at a public charging station in {city} because half the chargers were broken.",
+    "{brand} service center quoted an outrageous price for a simple battery check. Not okay.",
+    "Resale value on EVs is dropping fast. Lost a lot of money reselling my {brand}.",
+    "Cold weather killed my {brand}'s range by almost 35%. Nobody warned me about this.",
+    "Another fire incident reported with a {brand} battery pack. Safety concerns are growing.",
+    "Public charging infrastructure in {city} is still way behind what we actually need.",
+    "Paid a premium for my {brand} EV and the software glitches are constant. Frustrating.",
+    "EV insurance premiums are getting ridiculous. Barely any savings left after that cost.",
+]
+
+NEUTRAL_TEMPLATES = [
+    "{brand} reported quarterly EV sales numbers for {city} region today.",
+    "New report compares total cost of ownership between {brand} EV and equivalent petrol models.",
+    "{city} municipal corporation is reviewing new EV charging zone proposals this week.",
+    "Panel discussion on EV battery recycling policy scheduled in {city} next month.",
+    "{brand} unveils roadmap for next 3 EV models targeted at the {city} market.",
+    "Industry analysts debate the pace of EV adoption in {city} versus global averages.",
+    "New import duty structure for EV components announced, impacting brands like {brand}.",
+    "Survey shows mixed consumer sentiment on EV affordability in {city}.",
+    "{brand} to set up a new battery assembly plant near {city}.",
+    "Comparative study released on charging time across {brand} and competing EV brands.",
+]
+
+SENTIMENT_BUCKETS = [
+    ("positive", POSITIVE_TEMPLATES, 0.40),
+    ("negative", NEGATIVE_TEMPLATES, 0.27),
+    ("neutral", NEUTRAL_TEMPLATES, 0.33),
+]
+
+USERNAME_PREFIXES = ["ev_", "auto_", "green_", "tech_", "drive_", "city_",
+                      "future_", "motor_", "daily_", "the_"]
+USERNAME_SUFFIXES = ["fan92", "watcher", "insider", "talks", "news",
+                      "diaries", "guy", "voice", "report", "x"]
+
+
+def random_username():
+    return random.choice(USERNAME_PREFIXES) + random.choice(USERNAME_SUFFIXES) + str(random.randint(1, 999))
+
+
+def random_date():
+    delta = END_DATE - START_DATE
+    rand_seconds = random.randint(0, int(delta.total_seconds()))
+    return START_DATE + timedelta(seconds=rand_seconds)
+
+
+def build_hashtags():
+    k = random.choice([1, 1, 2, 2, 3])
+    return random.sample(HASHTAG_POOL, k)
+
+
+def build_record(tweet_id):
+    label, templates, _ = random.choices(
+        SENTIMENT_BUCKETS,
+        weights=[w for _, _, w in SENTIMENT_BUCKETS]
+    )[0]
+
+    brand = random.choice(BRANDS)
+    city = random.choice(CITIES)
+    template = random.choice(templates)
+    text = template.format(brand=brand, city=city)
+
+    hashtags = build_hashtags()
+    text_with_tags = text + " " + " ".join(hashtags)
+
+    followers = int(np.random.lognormal(mean=6.5, sigma=1.8))
+    followers = max(20, min(followers, 2_500_000))
+    verified = followers > 50_000 and random.random() < 0.6
+
+    # Engagement correlates with follower count and sentiment intensity
+    base_engagement = np.random.lognormal(mean=1.2, sigma=1.3)
+    sentiment_multiplier = {"positive": 1.3, "negative": 1.5, "neutral": 0.8}[label]
+    follower_multiplier = np.log1p(followers) / 8
+
+    likes = int(base_engagement * sentiment_multiplier * follower_multiplier * random.uniform(0.8, 1.6))
+    retweets = int(likes * random.uniform(0.08, 0.35))
+    replies = int(likes * random.uniform(0.03, 0.20))
+    quotes = int(likes * random.uniform(0.0, 0.10))
+
+    dt = random_date()
+
+    return {
+        "tweet_id": 1_000_000_000 + tweet_id,
+        "date": dt.strftime("%Y-%m-%d"),
+        "time": dt.strftime("%H:%M:%S"),
+        "username": random_username(),
+        "verified": verified,
+        "followers_count": followers,
+        "text": text_with_tags,
+        "hashtags": ",".join(hashtags),
+        "brand_mentioned": brand,
+        "location": city,
+        "likes": max(0, likes),
+        "retweets": max(0, retweets),
+        "replies": max(0, replies),
+        "quotes": max(0, quotes),
+        "sentiment_label": label,
+        "language": "en",
+    }
+
+
+def main():
+    records = [build_record(i) for i in range(N_TWEETS)]
+    df = pd.DataFrame(records)
+    df.sort_values("date", inplace=True)
+    df.reset_index(drop=True, inplace=True)
+
+    # Inject a small amount of realistic messiness (as real scraped data has)
+    dup_idx = np.random.choice(df.index, size=8, replace=False)
+    df = pd.concat([df, df.loc[dup_idx]], ignore_index=True)  # duplicate rows
+
+    missing_idx = np.random.choice(df.index, size=15, replace=False)
+    df.loc[missing_idx, "location"] = np.nan  # missing location values
+
+    out_path = "data/output/ev_adoption_tweets.csv"
+    df.to_csv(out_path, index=False)
+    print(f"Generated {len(df)} records -> {out_path}")
+    print(df.head(3).to_string())
+
+
+if __name__ == "__main__":
+    main()
